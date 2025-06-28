@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pygrafito"
+version = "dynamic"
+description = "Object oriented graph database implemented on SQLite"
+authors = [
+  { name = "Mario Abarca", email = "knkillname@gmail.com" }
+]
+license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = ">=3.11"
+
+[tool.hatch.version]
+path = "src/pygrafito/__init__.py"
+
+[tool.isort]
+profile = "black"
+
+[tool.docformatter]
+black = true
+recursive = true
+in-place = true
+pre-summary-space = true
+make-summary-multi-line = true
