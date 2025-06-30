@@ -4,14 +4,34 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pygrafito"
-version = "dynamic"
 description = "Object oriented graph database implemented on SQLite"
+dynamic = ["version"]
 authors = [
   { name = "Mario Abarca", email = "knkillname@gmail.com" }
 ]
 license = { file = "LICENSE" }
 readme = "README.md"
 requires-python = ">=3.11"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Intended Audience :: Developers",
+  "Topic :: Database",
+  "Topic :: Software Development :: Libraries :: Python Modules"
+]
+
+[project.optional-dependencies]
+dev = [
+  "black",
+  "isort",
+  "pylint",
+  "mypy",
+  "hatch",
+  "pydocstyle",
+  "docformatter"
+]
 
 [tool.hatch.version]
 path = "src/pygrafito/__init__.py"
@@ -21,7 +41,7 @@ profile = "black"
 
 [tool.docformatter]
 black = true
-recursive = true
 in-place = true
+pre-summary-newline = true
 pre-summary-space = true
-make-summary-multi-line = true
+recursive = true
