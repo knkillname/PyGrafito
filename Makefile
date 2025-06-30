@@ -21,7 +21,7 @@ clean:
 	find . -type f -name '*.pyo' -delete
 
 build:
-	hatch build
+	pipenv run hatch build
 
 test:
 	python3 -m unittest discover -s src/pygrafito
