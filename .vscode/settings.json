@@ -1,0 +1,18 @@
+{
+    "[python]": {
+        "diffEditor.ignoreTrimWhitespace": false,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "always"
+        },
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.rulers": [
+            72,
+            100
+        ],
+        "editor.wordBasedSuggestions": "off"
+    },
+    "editor.formatOnSave": true,
+    "editor.rulers": [
+        80
+    ]
+}
