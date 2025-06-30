@@ -6,11 +6,13 @@
 	"customizations": {
 		"vscode": {
 			"extensions": [
+				"DavidAnson.vscode-markdownlint",
 				"ms-python.black-formatter",
+				"ms-python.isort",
 				"ms-python.mypy-type-checker",
 				"ms-python.pylint",
 				"ms-python.python",
-				"ms-python.isort"
+				"yzhang.markdown-all-in-one"
 			]
 		}
 	},
