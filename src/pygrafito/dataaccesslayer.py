@@ -129,6 +129,7 @@ class EntityConfigDict(TypedDict):
     """
 
     table: str
+    alias: str
     id_col: str
     props_table: str
     sql_fetch_select: str
@@ -145,6 +146,7 @@ class EntityConfigDict(TypedDict):
 _ENTITY_CONFIG: dict[EntityType, EntityConfigDict] = {
     EntityType.NODE: {
         "table": "nodes",
+        "alias": "n",
         "id_col": "node_id",
         "props_table": "node_properties",
         "sql_fetch_select": "n.node_id, n.label",
@@ -157,6 +159,7 @@ _ENTITY_CONFIG: dict[EntityType, EntityConfigDict] = {
     },
     EntityType.EDGE: {
         "table": "edges",
+        "alias": "e",
         "id_col": "edge_id",
         "props_table": "edge_properties",
         "sql_fetch_select": "e.edge_id, e.source_id, e.target_id, e.label",
@@ -271,7 +274,11 @@ class GraphDB:
             if node_id is None:
                 raise RuntimeError("Failed to retrieve lastrowid after node insertion.")
             if properties:
-                self.set_properties(EntityType.NODE, node_id, properties)
+                self.set_properties(
+                    entity_type=EntityType.NODE,
+                    properties=properties,
+                    entity_id=node_id,
+                )
         return node_id
 
     def create_edge(
@@ -316,7 +323,11 @@ class GraphDB:
             if edge_id is None:
                 raise RuntimeError("Failed to retrieve lastrowid after edge insertion.")
             if properties:
-                self.set_properties(EntityType.EDGE, edge_id, properties)
+                self.set_properties(
+                    entity_type=EntityType.EDGE,
+                    properties=properties,
+                    entity_id=edge_id,
+                )
         return edge_id
 
     @overload
@@ -350,18 +361,22 @@ class GraphDB:
         connection = self._validate_connection()
         if not entity_ids:
             return []
+
         config = _ENTITY_CONFIG[entity_type]
         id_placeholders = ",".join("?" * len(entity_ids))
         props_alias = "ep" if entity_type == EntityType.EDGE else "np"
+        entity_alias = config["alias"]
+
         sql_fetch = f"""
             SELECT {config['sql_fetch_select']}, {props_alias}.key, {props_alias}.value
             FROM {config['sql_fetch_from']}
             LEFT JOIN {config['props_table']} AS {props_alias} ON {config['sql_fetch_join_on']}
-            WHERE {config['table']}.{config['id_col']} IN ({id_placeholders})
-            ORDER BY {config['table']}.{config['id_col']}
+            WHERE {entity_alias}.{config['id_col']} IN ({id_placeholders})
+            ORDER BY {entity_alias}.{config['id_col']}
         """
         cursor = connection.cursor()
         cursor.execute(sql_fetch, tuple(entity_ids))
+
         entities_by_id = {}
         for row in cursor:
             entity_id = row[0]
@@ -473,7 +488,7 @@ class GraphDB:
             query_params.append(label)
         if properties:
             prop_clauses = " OR ".join(
-                ("(ep.key = ? AND ep.value = ?)" for _ in properties)
+                "(ep.key = ? AND ep.value = ?)" for _ in properties
             )
             base_where_sql = (
                 f" AND ({' AND '.join(base_where_clauses)})"
@@ -490,8 +505,10 @@ class GraphDB:
             prop_params = itertools.chain.from_iterable(
                 (key, json.dumps(value)) for key, value in properties.items()
             )
-            query_params.extend(prop_params)
-            query_params.append(len(properties))
+            final_params: list[Any] = list(prop_params)
+            final_params.extend(query_params)
+            final_params.append(len(properties))
+            query_params = final_params
         else:
             where_sql = (
                 f"WHERE {' AND '.join(base_where_clauses)}"
@@ -505,7 +522,10 @@ class GraphDB:
         return self._fetch_and_reconstruct(EntityType.EDGE, edge_ids)
 
     def set_properties(
-        self, entity_type: EntityType, entity_id: int | None, properties: dict[str, Any]
+        self,
+        entity_type: EntityType,
+        properties: dict[str, Any],
+        entity_id: int | None = None,
     ) -> None:
         """
         Set or update properties for a graph, node, or edge entity.
@@ -544,7 +564,10 @@ class GraphDB:
             connection.executemany(sql, data_generator)
 
     def remove_properties(
-        self, entity_type: EntityType, entity_id: int | None, keys: list[str]
+        self,
+        entity_type: EntityType,
+        keys: list[str],
+        entity_id: int | None = None,
     ) -> None:
         """
         Remove properties from a graph, node, or edge entity.
@@ -578,7 +601,7 @@ class GraphDB:
             connection.execute(sql, params)
 
     def get_properties(
-        self, entity_type: EntityType, entity_id: int | None
+        self, entity_type: EntityType, entity_id: int | None = None
     ) -> dict[str, Any]:
         """
         Retrieve all properties for a graph, node, or edge entity.
