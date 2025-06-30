@@ -1,6 +1,4 @@
-"""
-Unit tests for the pygrafito.dataaccesslayer module, themed around TRON: Legacy.
-"""
+"""Unit tests for the pygrafito.dataaccesslayer module, themed around TRON: Legacy."""
 
 import sqlite3
 import unittest
@@ -9,27 +7,22 @@ from ..dataaccesslayer import EntityType, GraphDB
 
 
 class TestGraphDB(unittest.TestCase):
-    """
-    Test suite for the GraphDB data access layer, TRON-themed.
-    """
+    """Test suite for the GraphDB data access layer, TRON-themed."""
 
     def setUp(self) -> None:
-        """
-        Set up a new in-memory database for each test.
-        """
+        """Set up a new in-memory database for each test."""
         self.db = GraphDB(":memory:")
         self.db.connect()
 
     def tearDown(self) -> None:
-        """
-        Close the database connection after each test.
-        """
+        """Close the database connection after each test."""
         self.db.close()
 
     # --- Create Tests ---
 
     def test_create_node(self) -> None:
-        """Test creating a 'Person' node for Kevin Flynn and a 'Program' node for CLU."""
+        """Test creating a 'Person' node for Kevin Flynn and a 'Program' node for
+        CLU."""
         flynn_id = self.db.create_node(
             label="Person", properties={"name": "Kevin Flynn"}
         )
@@ -165,7 +158,8 @@ class TestGraphDB(unittest.TestCase):
         self.assertDictEqual(self.db.get_properties(EntityType.EDGE, allegiance_id), {})
 
     def test_delete_creator_cascades_to_creations(self) -> None:
-        """Test that deleting the creator (Kevin) cascades to his direct relationships."""
+        """Test that deleting the creator (Kevin) cascades to his direct
+        relationships."""
         kevin_id = self.db.create_node("Person", {"name": "Kevin Flynn"})
         clu_id = self.db.create_node("Program", {"name": "CLU"})
         e1_id = self.db.create_edge(kevin_id, clu_id, "CREATED")

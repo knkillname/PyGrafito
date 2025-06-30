@@ -1,12 +1,10 @@
 """
-pygrafito.dataaccesslayer
--------------------------
-
 Provide a data access layer for a property graph database using SQLite.
 
-This module defines the core types and the `GraphDB` class for managing nodes, edges,
-and their properties in a property graph model. It supports creation, querying,
-updating, and deletion of graph entities, and is designed to be used as a context manager.
+This module defines the core types and the `GraphDB` class for managing
+nodes, edges, and their properties in a property graph model. It supports
+creation, querying, updating, and deletion of graph entities, and is
+designed to be used as a context manager.
 
 Classes
 -------
@@ -47,11 +45,11 @@ class NodeDict(TypedDict):
     Attributes
     ----------
     id : int
-        The unique identifier for the node.
+        Unique identifier for the node.
     label : str
-        The label or name of the node.
+        Label or name of the node.
     properties : dict[str, Any]
-        A dictionary containing additional properties or metadata
+        Dictionary containing additional properties or metadata
         associated with the node.
     """
 
@@ -67,15 +65,15 @@ class EdgeDict(TypedDict):
     Attributes
     ----------
     id : int
-        The unique identifier for the edge.
+        Unique identifier for the edge.
     source_id : int
-        The unique identifier of the source node of the edge.
+        Unique identifier of the source node of the edge.
     target_id : int
-        The unique identifier of the target node of the edge.
+        Unique identifier of the target node of the edge.
     label : str
-        A label describing the edge.
+        Label describing the edge.
     properties : dict[str, Any]
-        A dictionary containing additional properties of the edge.
+        Dictionary containing additional properties of the edge.
     """
 
     id: int
@@ -111,21 +109,23 @@ class EntityConfigDict(TypedDict):
     Attributes
     ----------
     table : str
-        The table name for the entity.
+        Table name for the entity.
+    alias : str
+        Table alias for SQL queries.
     id_col : str
-        The primary key column name for the entity.
+        Primary key column name for the entity.
     props_table : str
-        The table name for the entity's properties.
+        Table name for the entity's properties.
     sql_fetch_select : str
-        The SQL SELECT clause for fetching the entity.
+        SQL SELECT clause for fetching the entity.
     sql_fetch_from : str
-        The SQL FROM clause for fetching the entity.
+        SQL FROM clause for fetching the entity.
     sql_fetch_join_on : str
-        The SQL JOIN ON clause for joining properties.
+        SQL JOIN ON clause for joining properties.
     reconstructor : Callable[[Any], NodeDict | EdgeDict]
-        A function to reconstruct the entity from a database row.
+        Function to reconstruct the entity from a database row.
     props_builder : Callable[[NodeDict | EdgeDict, str, str], None]
-        A function to add a property to the entity from a key-value pair.
+        Function to add a property to the entity from a key-value pair.
     """
 
     table: str
@@ -190,12 +190,25 @@ class GraphDB:
     """
 
     def __init__(self, db_path: Path | str) -> None:
+        """
+        Initialize the GraphDB with the given database path.
+
+        Parameters
+        ----------
+        db_path : Path or str
+            Path to the SQLite database file.
+        """
         self.db_path = Path(db_path)
         self._connection: sqlite3.Connection | None = None
 
     def connect(self) -> None:
         """
-        Establish a connection to the SQLite database and initialize the schema if needed.
+        Establish a connection to the SQLite database and initialize the schema.
+
+        Raises
+        ------
+        ImportError
+            If the schema resource cannot be found.
         """
         if self._connection is None:
             self._connection = sqlite3.connect(self.db_path)
@@ -203,17 +216,14 @@ class GraphDB:
             self._initialize_schema()
 
     def close(self) -> None:
-        """
-        Close the SQLite database connection if it is open.
-        """
+        """Close the database connection."""
         if self._connection:
             self._connection.close()
             self._connection = None
 
     def _validate_connection(self) -> sqlite3.Connection:
         """
-        Check if the db connection is established and return it.
-        This pattern helps with static analysis (e.g., Mypy).
+        Check if the database connection is established and return it.
 
         Returns
         -------
@@ -235,6 +245,11 @@ class GraphDB:
     def _initialize_schema(self) -> None:
         """
         Initialize the database schema from the schema.sql resource file.
+
+        Raises
+        ------
+        ImportError
+            If the schema resource cannot be found.
         """
         connection = self._validate_connection()
         if not __package__:
@@ -333,12 +348,42 @@ class GraphDB:
     @overload
     def _fetch_and_reconstruct(
         self, entity_type: Literal[EntityType.NODE], entity_ids: list[int]
-    ) -> list[NodeDict]: ...
+    ) -> list[NodeDict]:
+        """
+        Fetch and reconstruct nodes from the database by their IDs.
+
+        Parameters
+        ----------
+        entity_type : Literal[EntityType.NODE]
+            The type of entity to fetch (NODE).
+        entity_ids : list of int
+            The list of node IDs to fetch.
+
+        Returns
+        -------
+        list[NodeDict]
+            A list of reconstructed node dictionaries.
+        """
 
     @overload
     def _fetch_and_reconstruct(
         self, entity_type: Literal[EntityType.EDGE], entity_ids: list[int]
-    ) -> list[EdgeDict]: ...
+    ) -> list[EdgeDict]:
+        """
+        Fetch and reconstruct edges from the database by their IDs.
+
+        Parameters
+        ----------
+        entity_type : Literal[EntityType.EDGE]
+            The type of entity to fetch (EDGE).
+        entity_ids : list of int
+            The list of edge IDs to fetch.
+
+        Returns
+        -------
+        list[EdgeDict]
+            A list of reconstructed edge dictionaries.
+        """
 
     def _fetch_and_reconstruct(
         self, entity_type: EntityType, entity_ids: list[int]
@@ -387,6 +432,37 @@ class GraphDB:
                 config["props_builder"](entities_by_id[entity_id], key, value)
         return list(entities_by_id.values())
 
+    def _build_find_nodes_query(
+        self,
+        label: str | None,
+        properties: dict[str, Any] | None,
+    ) -> tuple[str, tuple[Any, ...]]:
+        """Build the SQL query and parameters for finding nodes."""
+        query_params: list[Any] = []
+        if properties:
+            prop_clauses = " OR ".join(
+                ("(np.key = ? AND np.value = ?)" for _ in properties)
+            )
+            prop_params = itertools.chain.from_iterable(
+                (key, json.dumps(value)) for key, value in properties.items()
+            )
+            query_params.extend(prop_params)
+            sql = f"""
+                SELECT np.node_id FROM node_properties AS np
+                {'JOIN nodes AS n ON np.node_id = n.node_id' if label else ''}
+                WHERE ({prop_clauses}) {'AND n.label = ?' if label else ''}
+                GROUP BY np.node_id HAVING COUNT(np.node_id) = ?
+            """
+            if label:
+                query_params.append(label)
+            query_params.append(len(properties))
+        else:
+            # Ensured by find_nodes that label is not None here
+            sql = "SELECT node_id FROM nodes WHERE label = ?"
+            query_params.append(label)
+
+        return sql, tuple(query_params)
+
     def find_nodes(
         self, label: str | None = None, properties: dict[str, Any] | None = None
     ) -> list[NodeDict]:
@@ -415,31 +491,61 @@ class GraphDB:
             raise ValueError(
                 "At least one of 'label' or 'properties' must be provided."
             )
+
+        sql, params = self._build_find_nodes_query(label, properties)
+
+        cursor = connection.cursor()
+        cursor.execute(sql, params)
+        node_ids = [row[0] for row in cursor]
+
+        return self._fetch_and_reconstruct(EntityType.NODE, node_ids)
+
+    def _build_find_edges_query(
+        self,
+        source_node_id: int | None,
+        target_node_id: int | None,
+        label: str | None,
+        properties: dict[str, Any] | None,
+    ) -> tuple[str, tuple[Any, ...]]:
+        """Build the SQL query and parameters for finding edges."""
         query_params: list[Any] = []
+        base_where_clauses: list[str] = []
+
+        if source_node_id is not None:
+            base_where_clauses.append("e.source_id = ?")
+            query_params.append(source_node_id)
+        if target_node_id is not None:
+            base_where_clauses.append("e.target_id = ?")
+            query_params.append(target_node_id)
+        if label is not None:
+            base_where_clauses.append("e.label = ?")
+            query_params.append(label)
+
         if properties:
             prop_clauses = " OR ".join(
-                ("(np.key = ? AND np.value = ?)" for _ in properties)
+                ("(ep.key = ? AND ep.value = ?)" for _ in properties)
             )
+            base_conditions = " AND ".join(base_where_clauses)
+            base_where_sql = f" AND ({base_conditions})" if base_where_clauses else ""
+            sql = f"""
+                SELECT ep.edge_id FROM edge_properties AS ep
+                JOIN edges AS e ON ep.edge_id = e.edge_id
+                WHERE ({prop_clauses}){base_where_sql}
+                GROUP BY ep.edge_id
+                HAVING COUNT(ep.edge_id) = ?
+            """
             prop_params = itertools.chain.from_iterable(
                 (key, json.dumps(value)) for key, value in properties.items()
             )
-            query_params.extend(prop_params)
-            sql = f"""
-                SELECT np.node_id FROM node_properties AS np
-                {'JOIN nodes AS n ON np.node_id = n.node_id' if label else ''}
-                WHERE ({prop_clauses}) {'AND n.label = ?' if label else ''}
-                GROUP BY np.node_id HAVING COUNT(np.node_id) = ?
-            """
-            if label:
-                query_params.append(label)
-            query_params.append(len(properties))
-        else:
-            sql = "SELECT node_id FROM nodes WHERE label = ?"
-            query_params.append(label)
-        cursor = connection.cursor()
-        cursor.execute(sql, tuple(query_params))
-        node_ids = [row[0] for row in cursor]
-        return self._fetch_and_reconstruct(EntityType.NODE, node_ids)
+            final_params: list[Any] = list(prop_params)
+            final_params.extend(query_params)
+            final_params.append(len(properties))
+            return sql, tuple(final_params)
+
+        base_where_sql = " AND ".join(base_where_clauses)
+        where_sql = f"WHERE {base_where_sql}" if base_where_clauses else ""
+        sql = f"SELECT e.edge_id FROM edges AS e {where_sql}"
+        return sql, tuple(query_params)
 
     def find_edges(
         self,
@@ -475,50 +581,15 @@ class GraphDB:
         connection = self._validate_connection()
         if all(p is None for p in [source_node_id, target_node_id, label, properties]):
             raise ValueError("At least one search criterion must be provided.")
-        query_params: list[Any] = []
-        base_where_clauses: list[str] = []
-        if source_node_id is not None:
-            base_where_clauses.append("e.source_id = ?")
-            query_params.append(source_node_id)
-        if target_node_id is not None:
-            base_where_clauses.append("e.target_id = ?")
-            query_params.append(target_node_id)
-        if label is not None:
-            base_where_clauses.append("e.label = ?")
-            query_params.append(label)
-        if properties:
-            prop_clauses = " OR ".join(
-                "(ep.key = ? AND ep.value = ?)" for _ in properties
-            )
-            base_where_sql = (
-                f" AND ({' AND '.join(base_where_clauses)})"
-                if base_where_clauses
-                else ""
-            )
-            sql = f"""
-                SELECT ep.edge_id FROM edge_properties AS ep
-                JOIN edges AS e ON ep.edge_id = e.edge_id
-                WHERE ({prop_clauses}){base_where_sql}
-                GROUP BY ep.edge_id
-                HAVING COUNT(ep.edge_id) = ?
-            """
-            prop_params = itertools.chain.from_iterable(
-                (key, json.dumps(value)) for key, value in properties.items()
-            )
-            final_params: list[Any] = list(prop_params)
-            final_params.extend(query_params)
-            final_params.append(len(properties))
-            query_params = final_params
-        else:
-            where_sql = (
-                f"WHERE {' AND '.join(base_where_clauses)}"
-                if base_where_clauses
-                else ""
-            )
-            sql = f"SELECT e.edge_id FROM edges AS e {where_sql}"
+
+        sql, params = self._build_find_edges_query(
+            source_node_id, target_node_id, label, properties
+        )
+
         cursor = connection.cursor()
-        cursor.execute(sql, tuple(query_params))
+        cursor.execute(sql, params)
         edge_ids = [row[0] for row in cursor]
+
         return self._fetch_and_reconstruct(EntityType.EDGE, edge_ids)
 
     def set_properties(
@@ -534,10 +605,10 @@ class GraphDB:
         ----------
         entity_type : EntityType
             The type of entity (GRAPH, NODE, or EDGE).
-        entity_id : int or None
-            The ID of the entity (required for NODE and EDGE, ignored for GRAPH).
         properties : dict[str, Any]
             The properties to set or update.
+        entity_id : int or None
+            The ID of the entity (required for NODE and EDGE, ignored for GRAPH).
         """
         connection = self._validate_connection()
         data_generator: Iterator[tuple[Any, ...]]
@@ -576,10 +647,10 @@ class GraphDB:
         ----------
         entity_type : EntityType
             The type of entity (GRAPH, NODE, or EDGE).
-        entity_id : int or None
-            The ID of the entity (required for NODE and EDGE, ignored for GRAPH).
         keys : list[str]
             The property keys to remove.
+        entity_id : int or None
+            The ID of the entity (required for NODE and EDGE, ignored for GRAPH).
         """
         connection = self._validate_connection()
         if not keys:
@@ -604,7 +675,7 @@ class GraphDB:
         self, entity_type: EntityType, entity_id: int | None = None
     ) -> dict[str, Any]:
         """
-        Retrieve all properties for a graph, node, or edge entity.
+        Get properties for a graph, node, or edge entity.
 
         Parameters
         ----------
@@ -616,7 +687,7 @@ class GraphDB:
         Returns
         -------
         dict[str, Any]
-            A dictionary of property keys and their values.
+            The properties of the entity.
         """
         connection = self._validate_connection()
         params: tuple[Any, ...]
@@ -637,7 +708,7 @@ class GraphDB:
 
     def delete_node(self, node_id: int) -> None:
         """
-        Delete a node from the graph by its ID.
+        Delete a node and its associated edges from the graph.
 
         Parameters
         ----------
@@ -651,7 +722,7 @@ class GraphDB:
 
     def delete_edge(self, edge_id: int) -> None:
         """
-        Delete an edge from the graph by its ID.
+        Delete an edge from the graph.
 
         Parameters
         ----------
@@ -685,7 +756,7 @@ class GraphDB:
             The exception type.
         exc_val : Exception
             The exception value.
-        exc_tb : traceback
+        exc_tb : TracebackType
             The traceback object.
         """
         self.close()
